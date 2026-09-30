@@ -1,94 +1,97 @@
 import asyncio
-import websockets
-import json
-import base64
+from google import genai
+from google.genai import types
 
 class GeminiClient:
-    def __init__(self, api_key: str, voice: str, model: str = "models/gemini-2.0-flash"):
+    def __init__(self, api_key: str, voice: str, model: str = "models/gemini-2.0-flash-exp"):
         self.api_key = api_key
         self.voice = voice
-        self.model = model
-        self.ws = None
-        self.uri = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key={self.api_key}"
+        # The genai SDK expects model without 'models/' prefix
+        self.model = model.replace("models/", "")
+        self.client = genai.Client(api_key=api_key)
+        self.session = None
 
     async def connect(self):
-        self.ws = await websockets.connect(self.uri)
-        await self._send_setup_message()
-        # Wait for setupComplete before returning
-        try:
-            msg = await self.ws.recv()
-            data = json.loads(msg)
-            if "setupComplete" in data:
-                print("Gemini API Setup Complete!")
-            else:
-                print(f"Unexpected first message: {data}")
-        except Exception as e:
-            print(f"Failed during setup wait: {e}")
+        config = types.LiveConnectParameters(
+            response_modalities=["AUDIO", "TEXT"],
+            system_instruction=types.Content(parts=[
+                types.Part.from_text("You are a real-time translator between Persian and English. Whatever I say in Persian, you translate to English. Whatever I say in English, you translate to Persian.")
+            ]),
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=self.voice
+                    )
+                )
+            )
+        )
+        # We need to maintain the context manager open while receiving
+        # Instead of 'async with' here, we'll open it manually or wrap the receive loop
+        pass
 
-    async def _send_setup_message(self):
-        setup_message = {
-            "setup": {
-                "model": self.model,
-                "systemInstruction": {
-                    "parts": [{"text": "You are a real-time translator between Persian and English. Whatever I say in Persian, you translate to English. Whatever I say in English, you translate to Persian."}]
-                },
-                "generationConfig": {
-                    "responseModalities": ["AUDIO", "TEXT"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {
-                                "voiceName": self.voice
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        await self.ws.send(json.dumps(setup_message))
+    async def run_session(self, input_queue: asyncio.Queue, text_callback, audio_callback):
+        config = types.LiveConnectParameters(
+            response_modalities=["AUDIO", "TEXT"],
+            system_instruction=types.Content(parts=[
+                types.Part.from_text("You are a real-time translator between Persian and English. Whatever I say in Persian, you translate to English. Whatever I say in English, you translate to Persian.")
+            ]),
+            speech_config=types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                        voice_name=self.voice
+                    )
+                )
+            )
+        )
+        
+        async def send_loop(session):
+            try:
+                while True:
+                    chunk = await input_queue.get()
+                    if chunk is None: # sentinel
+                        break
+                    await session.send_realtime_input(
+                        media=types.Blob(data=chunk, mime_type="audio/pcm;rate=16000")
+                    )
+            except asyncio.CancelledError:
+                pass
+
+        try:
+            async with self.client.aio.live.connect(model=self.model, config=config) as session:
+                self.session = session
+                send_task = asyncio.create_task(send_loop(session))
+                
+                async for message in session.receive():
+                    if message.text:
+                        await text_callback(message.text)
+                    # Using the latest SDK message structure for audio (inline_data usually)
+                    if hasattr(message, "inline_data") and message.inline_data:
+                        await audio_callback(message.inline_data.data)
+                    # Some versions use server_content
+                    if hasattr(message, "server_content") and message.server_content:
+                        model_turn = message.server_content.model_turn
+                        if model_turn:
+                            for part in model_turn.parts:
+                                if part.inline_data:
+                                    await audio_callback(part.inline_data.data)
+                                    
+                send_task.cancel()
+        except Exception as e:
+            print(f"GenAI Live Session Error: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.session = None
 
     async def send_audio_chunk(self, pcm_data: bytes):
-        if not self.ws:
-            return
-        
-        b64_data = base64.b64encode(pcm_data).decode("utf-8")
-        msg = {
-            "realtimeInput": {
-                "mediaChunks": [
-                    {
-                        "mimeType": "audio/pcm;rate=16000",
-                        "data": b64_data
-                    }
-                ]
-            }
-        }
-        await self.ws.send(json.dumps(msg))
+        # We use input_queue in run_session now, so this is unused
+        pass
 
     async def receive_messages(self, text_callback, audio_callback):
-        if not self.ws:
-            return
-
-        try:
-            async for message in self.ws:
-                data = json.loads(message)
-                # Handle incoming server content
-                if "serverContent" in data:
-                    model_turn = data["serverContent"].get("modelTurn")
-                    if model_turn:
-                        for part in model_turn.get("parts", []):
-                            if "text" in part:
-                                await text_callback(part["text"])
-                            elif "inlineData" in part:
-                                # Audio response
-                                audio_b64 = part["inlineData"].get("data")
-                                if audio_b64:
-                                    audio_bytes = base64.b64decode(audio_b64)
-                                    await audio_callback(audio_bytes)
-        except websockets.exceptions.ConnectionClosed as e:
-            print(f"WebSocket connection closed. Code: {e.code}, Reason: {e.reason}")
-        except Exception as e:
-            print(f"Error in receive loop: {e}")
+        # Also unused directly
+        pass
 
     async def close(self):
-        if self.ws:
-            await self.ws.close()
-            self.ws = None
+        # Cancellation is handled in the UI
+        pass
+

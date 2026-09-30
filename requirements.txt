@@ -2,3 +2,4 @@ flet
 websockets
 sounddevice
 numpy
+google-genai

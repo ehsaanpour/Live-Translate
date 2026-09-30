@@ -208,12 +208,6 @@ class MainView(ft.Container):
                 voice=self.voice_selector.value, 
                 model=self.model_dropdown.value or "models/gemini-2.0-flash"
             )
-            try:
-                await self.gemini_client.connect()
-            except Exception as ex:
-                self.is_recording = False
-                print(f"Failed to connect to Gemini: {ex}")
-                return
 
             self.mic_toggle.icon = ft.Icons.MIC
             self.mic_toggle.bgcolor = ft.Colors.RED_500
@@ -221,9 +215,13 @@ class MainView(ft.Container):
 
             await self.audio_handler.start()
 
-            self.send_task = asyncio.create_task(self.send_audio_loop())
-            self.receive_task = asyncio.create_task(
-                self.gemini_client.receive_messages(self.on_text, self.on_audio)
+            # Start the monolithic session
+            self.session_task = asyncio.create_task(
+                self.gemini_client.run_session(
+                    self.audio_handler.input_queue,
+                    self.on_text,
+                    self.on_audio
+                )
             )
         else:
             self.mic_toggle.icon = ft.Icons.MIC_OFF
@@ -231,22 +229,12 @@ class MainView(ft.Container):
             self.audio_visualizer.value = 0.0
             self.main_page.update()
 
-            if hasattr(self, 'send_task'):
-                self.send_task.cancel()
-            if hasattr(self, 'receive_task'):
-                self.receive_task.cancel()
+            if hasattr(self, 'session_task'):
+                self.session_task.cancel()
+            
+            # Send sentinel to queue
+            self.audio_handler.input_queue.put_nowait(None)
             await self.audio_handler.stop()
-            if hasattr(self, 'gemini_client'):
-                await self.gemini_client.close()
-
-    async def send_audio_loop(self):
-        try:
-            while self.is_recording:
-                chunk = await self.audio_handler.input_queue.get()
-                if hasattr(self, 'gemini_client'):
-                    await self.gemini_client.send_audio_chunk(chunk)
-        except asyncio.CancelledError:
-            pass
 
     async def on_text(self, text: str):
         is_persian = any('\u0600' <= c <= '\u06FF' for c in text)
