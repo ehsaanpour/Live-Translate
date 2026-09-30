@@ -168,14 +168,14 @@ class MainView(ft.Container):
                                 bidi_models.append(m['name'])
                         
                         # Ensure known live models are always available
-                        known_live_models = ['models/gemini-2.0-flash-exp', 'models/gemini-2.0-flash']
+                        known_live_models = ['models/gemini-2.0-flash', 'models/gemini-2.0-flash-exp']
                         for km in known_live_models:
                             if km not in bidi_models:
                                 bidi_models.insert(0, km)
                             
                         self.model_dropdown.options = [ft.dropdown.Option(m) for m in bidi_models]
                         if self.model_dropdown.value not in bidi_models:
-                            self.model_dropdown.value = "models/gemini-2.0-flash-exp"
+                            self.model_dropdown.value = "models/gemini-2.0-flash"
                     except Exception as e:
                         print("Error parsing models:", e)
                     
