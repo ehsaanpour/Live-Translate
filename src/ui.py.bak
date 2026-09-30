@@ -1,0 +1,96 @@
+import flet as ft
+
+class MainView(ft.Column):
+    def __init__(self, page: ft.Page):
+        super().__init__()
+        self.main_page = page
+        self.expand = True
+
+        # API Key Input
+        self.api_key_input = ft.TextField(
+            label="Gemini API Key",
+            password=True,
+            can_reveal_password=True,
+            expand=True
+        )
+
+        # Voice Selector
+        self.voice_selector = ft.Dropdown(
+            label="Voice",
+            options=[
+                ft.dropdown.Option("Aoede"),
+                ft.dropdown.Option("Charon"),
+                ft.dropdown.Option("Fenrir"),
+                ft.dropdown.Option("Kore"),
+                ft.dropdown.Option("Puck"),
+            ],
+            value="Aoede",
+            width=200,
+        )
+
+        # Mic Toggle Button
+        self.mic_toggle = ft.FloatingActionButton(
+            icon=ft.Icons.MIC_OFF,
+            on_click=self.toggle_mic,
+            bgcolor=ft.Colors.GREY_700,
+            tooltip="Start/Stop Translation"
+        )
+
+        # Control Bar
+        self.control_bar = ft.Row(
+            controls=[self.api_key_input, self.voice_selector, self.mic_toggle],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+
+        # Persian List (Left)
+        self.persian_list = ft.ListView(spacing=10, auto_scroll=True)
+        # English List (Right)
+        self.english_list = ft.ListView(spacing=10, auto_scroll=True)
+
+        # Transcript Columns
+        self.transcript_columns = ft.Row(
+            controls=[
+                ft.Container(
+                    content=self.persian_list,
+                    expand=True,
+                    border=ft.Border.all(1, ft.Colors.OUTLINE),
+                    border_radius=10,
+                    padding=10
+                ),
+                ft.Container(
+                    content=self.english_list,
+                    expand=True,
+                    border=ft.Border.all(1, ft.Colors.OUTLINE),
+                    border_radius=10,
+                    padding=10
+                )
+            ],
+            expand=True,
+        )
+
+        self.controls.extend([
+            ft.Text("Live Translation (Persian <-> English)", style=ft.TextThemeStyle.HEADLINE_MEDIUM),
+            self.control_bar,
+            self.transcript_columns
+        ])
+
+        self.is_recording = False
+
+    def toggle_mic(self, e):
+        self.is_recording = not self.is_recording
+        if self.is_recording:
+            self.mic_toggle.icon = ft.Icons.MIC
+            self.mic_toggle.bgcolor = ft.Colors.RED_500
+            # TODO: Start audio recording and websocket connection
+        else:
+            self.mic_toggle.icon = ft.Icons.MIC_OFF
+            self.mic_toggle.bgcolor = ft.Colors.GREY_700
+            # TODO: Stop audio recording and websocket connection
+        self.main_page.update()
+
+    def add_transcript(self, text: str, lang: str):
+        if lang == "fa":
+            self.persian_list.controls.append(ft.Text(text))
+        elif lang == "en":
+            self.english_list.controls.append(ft.Text(text))
+        self.main_page.update()

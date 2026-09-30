@@ -1,0 +1,3 @@
+main called
+MainView created
+MainView added
