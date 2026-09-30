@@ -14,6 +14,16 @@ class GeminiClient:
     async def connect(self):
         self.ws = await websockets.connect(self.uri)
         await self._send_setup_message()
+        # Wait for setupComplete before returning
+        try:
+            msg = await self.ws.recv()
+            data = json.loads(msg)
+            if "setupComplete" in data:
+                print("Gemini API Setup Complete!")
+            else:
+                print(f"Unexpected first message: {data}")
+        except Exception as e:
+            print(f"Failed during setup wait: {e}")
 
     async def _send_setup_message(self):
         setup_message = {
@@ -73,8 +83,10 @@ class GeminiClient:
                                 if audio_b64:
                                     audio_bytes = base64.b64decode(audio_b64)
                                     await audio_callback(audio_bytes)
-        except websockets.exceptions.ConnectionClosed:
-            print("WebSocket connection closed.")
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"WebSocket connection closed. Code: {e.code}, Reason: {e.reason}")
+        except Exception as e:
+            print(f"Error in receive loop: {e}")
 
     async def close(self):
         if self.ws:
