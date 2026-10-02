@@ -28,8 +28,8 @@ class MainView(ft.Container):
         
         self.model_dropdown = ft.Dropdown(
             label="AI Model",
-            options=[ft.dropdown.Option("models/gemini-2.0-flash")],
-            value="models/gemini-2.0-flash",
+            options=[ft.dropdown.Option("models/gemini-3.1-flash-live-preview")],
+            value="models/gemini-3.1-flash-live-preview",
             width=400
         )
         
@@ -168,14 +168,14 @@ class MainView(ft.Container):
                                 bidi_models.append(m['name'])
                         
                         # Ensure known live models are always available
-                        known_live_models = ['models/gemini-2.0-flash', 'models/gemini-2.0-flash-exp']
+                        known_live_models = ['models/gemini-3.1-flash-live-preview', 'models/gemini-3.5-live-translate-preview', 'models/gemini-2.0-flash']
                         for km in known_live_models:
                             if km not in bidi_models:
                                 bidi_models.insert(0, km)
                             
                         self.model_dropdown.options = [ft.dropdown.Option(m) for m in bidi_models]
                         if self.model_dropdown.value not in bidi_models:
-                            self.model_dropdown.value = "models/gemini-2.0-flash"
+                            self.model_dropdown.value = "models/gemini-3.1-flash-live-preview"
                     except Exception as e:
                         print("Error parsing models:", e)
                     
@@ -196,33 +196,40 @@ class MainView(ft.Container):
     async def toggle_mic(self, e):
         self.is_recording = not self.is_recording
         if self.is_recording:
-            key = self.api_key_input.value
-            if not key:
-                self.is_recording = False
-                self.settings_dialog.open = True
-                self.main_page.update()
-                return
+            try:
+                key = self.api_key_input.value
+                if not key:
+                    self.is_recording = False
+                    self.settings_dialog.open = True
+                    self.main_page.update()
+                    return
 
-            self.gemini_client = GeminiClient(
-                api_key=key, 
-                voice=self.voice_selector.value, 
-                model=self.model_dropdown.value or "models/gemini-2.0-flash"
-            )
-
-            self.mic_toggle.icon = ft.Icons.MIC
-            self.mic_toggle.bgcolor = ft.Colors.RED_500
-            self.main_page.update()
-
-            await self.audio_handler.start()
-
-            # Start the monolithic session
-            self.session_task = asyncio.create_task(
-                self.gemini_client.run_session(
-                    self.audio_handler.input_queue,
-                    self.on_text,
-                    self.on_audio
+                print(f"Starting Gemini Client with voice {self.voice_selector.value}", flush=True)
+                self.gemini_client = GeminiClient(
+                    api_key=key, 
+                    voice=self.voice_selector.value, 
+                    model=self.model_dropdown.value or "models/gemini-3.1-flash-live-preview"
                 )
-            )
+
+                self.mic_toggle.icon = ft.Icons.MIC
+                self.mic_toggle.bgcolor = ft.Colors.RED_500
+                self.main_page.update()
+
+                await self.audio_handler.start()
+                print("Audio handler started, creating session task", flush=True)
+
+                # Start the monolithic session
+                self.session_task = asyncio.create_task(
+                    self.gemini_client.run_session(
+                        self.audio_handler.input_queue,
+                        self.on_text,
+                        self.on_audio
+                    )
+                )
+            except Exception as e:
+                print(f"Error starting mic: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
         else:
             self.mic_toggle.icon = ft.Icons.MIC_OFF
             self.mic_toggle.bgcolor = ft.Colors.GREY_700
