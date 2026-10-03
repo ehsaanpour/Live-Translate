@@ -252,8 +252,9 @@ class MainView(ft.Container):
         await loop.run_in_executor(None, self.audio_handler.play_audio, audio_data)
 
     def add_transcript(self, text: str, lang: str):
-        if lang == "fa":
-            self.persian_list.controls.append(ft.Text(text))
-        elif lang == "en":
-            self.english_list.controls.append(ft.Text(text))
+        target_list = self.persian_list if lang == "fa" else self.english_list
+        if not target_list.controls:
+            target_list.controls.append(ft.Text(text))
+        else:
+            target_list.controls[-1].value += text
         self.main_page.update()
